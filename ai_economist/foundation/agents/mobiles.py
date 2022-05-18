@@ -23,3 +23,13 @@ class Citizen(BaseAgent):
   def __init__(self, tr):
     super().__init__()
     self.state["nation"] = 0
+
+  @property
+  def nation(self):
+      """Returns nation index
+
+      Example:
+          >> self.nation
+          0
+      """
+      return self.state["nation"]
