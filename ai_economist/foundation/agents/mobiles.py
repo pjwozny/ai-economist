@@ -16,3 +16,10 @@ class BasicMobileAgent(BaseAgent):
     """
 
     name = "BasicMobileAgent"
+
+@agent_registry.add
+class TaxAgent(BaseAgent):
+  name = "TaxAgent"
+  def __init__(self, tr):
+    super().__init__()
+    self.tr = tr
