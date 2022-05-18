@@ -18,8 +18,8 @@ class BasicMobileAgent(BaseAgent):
     name = "BasicMobileAgent"
 
 @agent_registry.add
-class TaxAgent(BaseAgent):
-  name = "TaxAgent"
+class Citizen(BaseAgent):
+  name = "Citizen"
   def __init__(self, tr):
     super().__init__()
-    self.tr = tr
+    self.state["nation"] = 0
