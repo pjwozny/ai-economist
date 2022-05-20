@@ -377,6 +377,20 @@ class World:
         self.multi_action_mode_planner = bool(multi_action_mode_planner)
         self.maps = Maps(world_size, n_agents, world_resources, world_landmarks)
 
+        #international tax config
+        self.international = True
+        if self.international:
+            self.number_of_states = 2
+            state_width = self.world_size[1]/self.number_of_states
+            self.states = {}
+            for i in range(self.number_of_states):
+                lower_bound = i*state_width
+                upper_bound = lower_bound + state_width
+                self.states[i] = {
+                    "lower_bound":lower_bound,
+                    "upper_bound":upper_bound
+                }
+
         mobile_class = agent_registry.get("Citizen")
         planner_class = agent_registry.get("BasicPlanner")
         self._agents = [
