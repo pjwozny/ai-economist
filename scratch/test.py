@@ -86,8 +86,7 @@ env = foundation.make_env_instance(**env_config)
 
 obs = env.reset()
 
-for i in range(10):
+for i in range(1000):
     actions = sample_random_actions(env, obs)
     obs, rew, done, info = env.step(actions)
-    print('run')
 

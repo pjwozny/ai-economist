@@ -381,15 +381,21 @@ class World:
         self.international = True
         if self.international:
             self.number_of_states = 2
-            state_width = self.world_size[1]/self.number_of_states
-            self.states = {}
-            for i in range(self.number_of_states):
-                lower_bound = i*state_width
-                upper_bound = lower_bound + state_width
-                self.states[i] = {
-                    "lower_bound":lower_bound,
-                    "upper_bound":upper_bound
+            state_width = int(self.world_size[1]/self.number_of_states)
+            self.states = {
+                0:{
+                    "lower_bound":0,
+                    "upper_bound":state_width
                 }
+            }
+            if self.number_of_states > 1:
+                for i in range(1,self.number_of_states):
+                    self.states[i] = {
+                        "lower_bound":self.states[i-1]["upper_bound"]+1,
+                        "upper_bound":self.states[i-1]["upper_bound"]+state_width
+                    }
+                    if i == self.number_of_states:
+                        self.states[i]["upper_bound"] = self.world_size[1]
 
         mobile_class = agent_registry.get("Citizen")
         planner_class = agent_registry.get("BasicPlanner")
@@ -434,6 +440,12 @@ class World:
         agent_order = np.random.permutation(self.n_agents)
         agents = self.agents
         return [agents[i] for i in agent_order]
+
+    def get_nation_by_loc(self, loc):
+        """Gets nation based on column value and nations upper/lower bounds"""
+        for idx, vals in self.states.items():
+            if vals["lower_bound"] <= loc <= vals["upper_bound"]:
+                return idx
 
     def is_valid(self, r, c):
         """Return True if the coordinates [r, c] are within the game boundaries."""

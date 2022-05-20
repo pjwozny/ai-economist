@@ -264,9 +264,7 @@ class Gather_(Gather):
         """
         # This component adds 4 action that agents can take:
         # move up, down, left, or right
-        print('GETTING NYM ACTIONS',agent_cls_name)
         if agent_cls_name == "Citizen":
-            print('citizen identified')
             return 4
         return None
 
@@ -281,3 +279,76 @@ class Gather_(Gather):
         if agent_cls_name == "Citizen":
             return {"bonus_gather_prob": 0.0}
         raise NotImplementedError
+
+    def component_step(self):
+        """
+        See base_component.py for detailed description.
+
+        Move to adjacent, unoccupied locations. Collect resources when moving to
+        populated resource tiles, adding the resource to the agent's inventory and
+        de-populating it from the tile.
+        """
+        world = self.world
+
+        gathers = []
+        for agent in world.get_random_order_agents():
+
+            if self.name not in agent.action:
+                return
+            action = agent.get_component_action(self.name)
+
+            r, c = [int(x) for x in agent.loc]
+
+            if action == 0:  # NO-OP!
+                new_r, new_c = r, c
+
+            elif action <= 4:
+                if action == 1:  # Left
+                    new_r, new_c = r, c - 1
+                elif action == 2:  # Right
+                    new_r, new_c = r, c + 1
+                elif action == 3:  # Up
+                    new_r, new_c = r - 1, c
+                else:  # action == 4, # Down
+                    new_r, new_c = r + 1, c
+
+                # Attempt to move the agent (if the new coordinates aren't accessible,
+                # nothing will happen)
+                new_r, new_c = world.set_agent_loc(agent, new_r, new_c)
+
+                # If the agent did move, incur the labor cost of moving
+                if (new_r != r) or (new_c != c):
+                    agent.state["endogenous"]["Labor"] += self.move_labor
+
+                    #if agent changed nation, update nationality
+                    if world.states[agent.state["nation"]]["lower_bound"] \
+                        <= new_c <= world.states[agent.state["nation"]]["upper_bound"]:
+                        pass
+                    else:
+                        new_state= world.get_nation_by_loc(new_c)
+                        agent.state["nation"] = new_state
+
+                    
+
+
+            else:
+                raise ValueError
+
+            for resource, health in world.location_resources(new_r, new_c).items():
+                if health >= 1:
+                    n_gathered = 1 + (rand() < agent.state["bonus_gather_prob"])
+                    agent.state["inventory"][resource] += n_gathered
+                    world.consume_resource(resource, new_r, new_c)
+                    # Incur the labor cost of collecting a resource
+                    agent.state["endogenous"]["Labor"] += self.collect_labor
+                    # Log the gather
+                    gathers.append(
+                        dict(
+                            agent=agent.idx,
+                            resource=resource,
+                            n=n_gathered,
+                            loc=[new_r, new_c],
+                        )
+                    )
+
+        self.gathers.append(gathers)
