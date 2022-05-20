@@ -798,3 +798,75 @@ class SplitLayout(LayoutFromFile):
         self.curr_optimization_metric = deepcopy(curr_optimization_metric)
         self.init_optimization_metric = deepcopy(curr_optimization_metric)
         self.prev_optimization_metric = deepcopy(curr_optimization_metric)
+
+
+@scenario_registry.add
+class layoutCitizen(LayoutFromFile):
+    """
+    World containing stone and wood with stochastic regeneration. Refers to a fixed
+    layout file (see ./map_txt/ for examples) to determine the spatial arrangement of
+    stone, wood, and water tiles.
+
+    Args:
+        planner_gets_spatial_obs (bool): Whether the planner agent receives spatial
+            observations from the world.
+        full_observability (bool): Whether the mobile agents' spatial observation
+            includes the full world view or is instead an egocentric view.
+        mobile_agent_observation_range (int): If not using full_observability,
+            the spatial range (on each side of the agent) that is visible in the
+            spatial observations.
+        env_layout_file (str): Name of the layout file in ./map_txt/ to use.
+            Note: The world dimensions of that layout must match the world dimensions
+            argument used to construct the environment.
+        resource_regen_prob (float): Probability that an empty source tile will
+            regenerate a new resource unit.
+        fixed_four_skill_and_loc (bool): Whether to use a fixed set of build skills and
+            starting locations, with agents grouped into starting locations based on
+            which skill quartile they are in. False, by default.
+            True, for experiments in https://arxiv.org/abs/2004.13332.
+            Note: Requires that the environment uses the "Build" component with
+            skill_dist="pareto".
+        starting_agent_coin (int, float): Amount of coin agents have at t=0. Defaults
+            to zero coin.
+        isoelastic_eta (float): Parameter controlling the shape of agent utility
+            wrt coin endowment.
+        energy_cost (float): Coefficient for converting labor to negative utility.
+        energy_warmup_constant (float): Decay constant that controls the rate at which
+            the effective energy cost is annealed from 0 to energy_cost. Set to 0
+            (default) to disable annealing, meaning that the effective energy cost is
+            always energy_cost. The units of the decay constant depend on the choice of
+            energy_warmup_method.
+        energy_warmup_method (str): How to schedule energy annealing (warmup). If
+            "decay" (default), use the number of completed episodes. If "auto",
+            use the number of timesteps where the average agent reward was positive.
+        planner_reward_type (str): The type of reward used for the planner. Options
+            are "coin_eq_times_productivity" (default),
+            "inv_income_weighted_coin_endowment", and "inv_income_weighted_utility".
+        mixing_weight_gini_vs_coin (float): Degree to which equality is ignored w/
+            "coin_eq_times_productivity". Default is 0, which weights equality and
+            productivity equally. If set to 1, only productivity is rewarded.
+    """
+
+    name = "layout_from_file/simple_wood_and_stone_citizen"
+    agent_subclasses = ["Citizen", "BasicPlanner"]
+    required_entities = ["Wood", "Stone", "Water"]
+
+    def __init__(
+        self,
+        *base_env_args,
+        planner_gets_spatial_info=True,
+        full_observability=False,
+        mobile_agent_observation_range=5,
+        env_layout_file="quadrant_25x25_20each_30clump.txt",
+        resource_regen_prob=0.01,
+        fixed_four_skill_and_loc=False,
+        starting_agent_coin=0,
+        isoelastic_eta=0.23,
+        energy_cost=0.21,
+        energy_warmup_constant=0,
+        energy_warmup_method="decay",
+        planner_reward_type="coin_eq_times_productivity",
+        mixing_weight_gini_vs_coin=0.0,
+        **base_env_kwargs,
+    ):
+        super().__init__(*base_env_args, **base_env_kwargs)

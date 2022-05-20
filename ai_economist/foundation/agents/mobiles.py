@@ -4,6 +4,7 @@
 # For full license text, see the LICENSE file in the repo root
 # or https://opensource.org/licenses/BSD-3-Clause
 
+from unicodedata import name
 from ai_economist.foundation.base.base_agent import BaseAgent, agent_registry
 
 
@@ -20,9 +21,10 @@ class BasicMobileAgent(BaseAgent):
 @agent_registry.add
 class Citizen(BaseAgent):
   name = "Citizen"
-  def __init__(self, tr):
-    super().__init__()
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
     self.state["nation"] = 0
+    #self.name = name
 
   @property
   def nation(self):

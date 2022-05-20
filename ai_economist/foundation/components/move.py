@@ -220,3 +220,64 @@ class Gather(BaseComponent):
 
         """
         return self.gathers
+
+@component_registry.add
+class Gather_(Gather):
+    """
+    Allows mobile agents to move around the world and collect resources and prevents
+    agents from moving to invalid locations.
+
+    Can be configured to include collection skill, where agents have heterogeneous
+    probabilities of collecting bonus resources without additional labor cost.
+
+    Args:
+        move_labor (float): Labor cost associated with movement. Must be >= 0.
+            Default is 1.0.
+        collect_labor (float): Labor cost associated with collecting resources. This
+            cost is added (in addition to any movement cost) when the agent lands on
+            a tile that is populated with resources (triggering collection).
+            Must be >= 0. Default is 1.0.
+        skill_dist (str): Distribution type for sampling skills. Default ("none")
+            gives all agents identical skill equal to a bonus prob of 0. "pareto" and
+            "lognormal" sample skills from the associated distributions.
+    """
+
+    name = "Gather_"
+    required_entities = ["Coin", "House", "Labor"]
+    agent_subclasses = ["Citizen"]
+
+    def __init__(
+        self,
+        *base_component_args,
+        move_labor=1.0,
+        collect_labor=1.0,
+        skill_dist="none",
+        **base_component_kwargs
+    ):
+        super().__init__(*base_component_args, **base_component_kwargs)
+
+    def get_n_actions(self, agent_cls_name):
+        """
+        See base_component.py for detailed description.
+
+        Adds 4 actions (move up, down, left, or right) for mobile agents.
+        """
+        # This component adds 4 action that agents can take:
+        # move up, down, left, or right
+        print('GETTING NYM ACTIONS',agent_cls_name)
+        if agent_cls_name == "Citizen":
+            print('citizen identified')
+            return 4
+        return None
+
+    def get_additional_state_fields(self, agent_cls_name):
+        """
+        See base_component.py for detailed description.
+
+        For mobile agents, add state field for collection skill.
+        """
+        if agent_cls_name not in self.agent_subclasses:
+            return {}
+        if agent_cls_name == "Citizen":
+            return {"bonus_gather_prob": 0.0}
+        raise NotImplementedError

@@ -35,6 +35,7 @@ class BaseAgent:
 
     def __init__(self, idx=None, multi_action_mode=None):
         assert self.name
+        print(self.name)
 
         if idx is None:
             idx = 0
@@ -95,6 +96,8 @@ class BaseAgent:
         self._registered_endogenous = True
 
     def _incorporate_component(self, action_name, n):
+        print(self.name)
+        print('incorporating', action_name)
         extra_n = (
             1 if self.multi_action_mode else 0
         )  # Each sub-action has a NO-OP in multi action mode)
@@ -116,8 +119,12 @@ class BaseAgent:
     def register_components(self, components):
         """Used during environment construction to set up state/action spaces."""
         assert not self._registered_components
+        print('components to register',components)
         for component in components:
+            print('registering component', component)
+            print('agentname', self.name)
             n = component.get_n_actions(self.name)
+            print('n', n)
             if n is None:
                 continue
 
@@ -369,15 +376,21 @@ class BaseAgent:
         Return the action(s) taken for component_name component, or None if the
         agent does not use that component.
         """
+        print('get component action,')
+        print()
+        print(component_name)
         if sub_action_name is not None:
             return self.action.get(component_name + "." + sub_action_name, None)
         matching_names = [
             m for m in self._action_names if m.split(".")[0] == component_name
         ]
+        print('output:', matching_names)
+        print('aciton_names:', self._action_names)
         if len(matching_names) == 0:
             return None
         if len(matching_names) == 1:
             return self.action.get(matching_names[0], None)
+        
         return [self.action.get(m, None) for m in matching_names]
 
     def set_component_action(self, component_name, action):
