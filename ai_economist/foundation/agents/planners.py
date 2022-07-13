@@ -38,3 +38,32 @@ class BasicPlanner(BaseAgent):
         Planner agents do not occupy any location.
         """
         raise AttributeError("BasicPlanner agents do not occupy a location.")
+
+    @agent_registry.add
+    class MultiPlanner(BaseAgent):
+            """
+            A multi planner agent represents a social planner that sets macroeconomic policy.
+            A multiplanner is identical to a basic planner except that there is one multi-planner per state.
+
+            Unlike the "mobile" agent, the planner does not represent an embodied agent in
+            the world environment. BasicPlanner modifies the BaseAgent class to remove
+            location as part of the agent state.
+
+            Multiplanner idxs are p + a number
+            """
+            name = "MultiPlanner"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.state["loc"]
+
+        # Overwrite any specified index so that this one is always indexed as 'p'
+        # (make a separate class of planner if you want there to be multiple planners
+        # in a game)
+
+    @property
+    def loc(self):
+        """
+        Planner agents do not occupy any location.
+        """
+        raise AttributeError("BasicPlanner agents do not occupy a location.")

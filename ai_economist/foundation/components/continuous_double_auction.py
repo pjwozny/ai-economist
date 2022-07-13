@@ -742,3 +742,58 @@ class ContinuousDoubleAuction_(ContinuousDoubleAuction):
             return trades
 
         return None
+
+    def generate_observations(self):
+        """
+        See base_component.py for detailed description.
+
+        Here, agents and the planner both observe historical market behavior and
+        outstanding bids/asks for each tradable commodity. Agents only see the
+        outstanding bids/asks to which they could respond (that is, that they did not
+        submit). Agents also see their own outstanding bids/asks.
+        """
+        world = self.world
+
+        obs = {a.idx: {} for a in world.agents + world.planners}
+
+        prices = np.arange(self.price_floor, self.price_ceiling + 1)
+        for c in self.commodities:
+            net_price_history = np.sum(
+                np.stack([self.price_history[c][i] for i in range(self.n_agents)]),
+                axis=0,
+            )
+            market_rate = prices.dot(net_price_history) / np.maximum(
+                0.001, np.sum(net_price_history)
+            )
+            scaled_price_history = net_price_history * self.inv_scale
+
+            full_asks = self.available_asks(c, agent=None)
+            full_bids = self.available_bids(c, agent=None)
+
+            for _, planner in enumerate(world.planners):
+
+                obs[planner.idx].update(
+                    {
+                        "market_rate-{}".format(c): market_rate,
+                        "price_history-{}".format(c): scaled_price_history,
+                        "full_asks-{}".format(c): full_asks,
+                        "full_bids-{}".format(c): full_bids,
+                    }
+                )
+
+            for _, agent in enumerate(world.agents):
+                # Private to the agent
+                obs[agent.idx].update(
+                    {
+                        "market_rate-{}".format(c): market_rate,
+                        "price_history-{}".format(c): scaled_price_history,
+                        "available_asks-{}".format(c): full_asks
+                        - self.ask_hists[c][agent.idx],
+                        "available_bids-{}".format(c): full_bids
+                        - self.bid_hists[c][agent.idx],
+                        "my_asks-{}".format(c): self.ask_hists[c][agent.idx],
+                        "my_bids-{}".format(c): self.bid_hists[c][agent.idx],
+                    }
+                )
+
+        return obs

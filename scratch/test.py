@@ -26,7 +26,7 @@ def sample_random_action(agent, mask):
 
 def sample_random_actions(env, obs):
     """Samples random UNMASKED actions for each agent in obs."""
-        
+    print(obs)   
     actions = {
         a_idx: sample_random_action(env.get_agent(a_idx), a_obs['action_mask'])
         for a_idx, a_obs in obs.items()
@@ -85,6 +85,7 @@ env_config = {
 env = foundation.make_env_instance(**env_config)
 
 obs = env.reset()
+print(obs)
 
 for i in range(1000):
     actions = sample_random_actions(env, obs)
