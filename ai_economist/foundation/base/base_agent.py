@@ -95,6 +95,7 @@ class BaseAgent:
         self._registered_endogenous = True
 
     def _incorporate_component(self, action_name, n):
+
         extra_n = (
             1 if self.multi_action_mode else 0
         )  # Each sub-action has a NO-OP in multi action mode)
@@ -117,6 +118,7 @@ class BaseAgent:
         """Used during environment construction to set up state/action spaces."""
         assert not self._registered_components
         for component in components:
+
             n = component.get_n_actions(self.name)
             if n is None:
                 continue
@@ -170,7 +172,6 @@ class BaseAgent:
 
         verbose = False
         if verbose:
-            print(self.name, self.idx, "constructed action map:")
             for k, v in self.single_action_map.items():
                 print("single action map:", k, v)
             for k, v in self.action.items():
@@ -369,15 +370,18 @@ class BaseAgent:
         Return the action(s) taken for component_name component, or None if the
         agent does not use that component.
         """
+        
         if sub_action_name is not None:
             return self.action.get(component_name + "." + sub_action_name, None)
         matching_names = [
             m for m in self._action_names if m.split(".")[0] == component_name
         ]
+
         if len(matching_names) == 0:
             return None
         if len(matching_names) == 1:
             return self.action.get(matching_names[0], None)
+        
         return [self.action.get(m, None) for m in matching_names]
 
     def set_component_action(self, component_name, action):

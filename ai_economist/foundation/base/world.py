@@ -377,13 +377,38 @@ class World:
         self.multi_action_mode_planner = bool(multi_action_mode_planner)
         self.maps = Maps(world_size, n_agents, world_resources, world_landmarks)
 
-        mobile_class = agent_registry.get("BasicMobileAgent")
-        planner_class = agent_registry.get("BasicPlanner")
+        mobile_class = agent_registry.get("Citizen")
+        planner_class = agent_registry.get("MultiPlanner")
+
+        #international tax config
+        self.international = True
+        if self.international:
+            self.number_of_states = 6
+            state_width = int(self.world_size[1]/self.number_of_states)
+            self.states = {
+                0:{
+                    "lower_bound":0,
+                    "upper_bound":state_width
+                }
+            }
+            if self.number_of_states > 1:
+                for i in range(1,self.number_of_states):
+                    self.states[i] = {
+                        "lower_bound":self.states[i-1]["upper_bound"]+1,
+                        "upper_bound":self.states[i-1]["upper_bound"]+state_width
+                    }
+                    if i == self.number_of_states:
+                        self.states[i]["upper_bound"] = self.world_size[1]
+            self._planners = [
+                planner_class('p_'+str(i),multi_action_mode=self.multi_action_mode_planner) for i in range(self.number_of_states)
+            ]
+
+        
         self._agents = [
             mobile_class(i, multi_action_mode=self.multi_action_mode_agents)
             for i in range(self.n_agents)
         ]
-        self._planner = planner_class(multi_action_mode=self.multi_action_mode_planner)
+        self._planner = planner_class('p',multi_action_mode=self.multi_action_mode_planner)
 
         self.timestep = 0
 
@@ -404,6 +429,14 @@ class World:
         return self._planner
 
     @property
+    def planners(self):
+        """Return a list of planners"""
+        return self._planners
+
+    def get_planner_by_country(self, country):
+        return [planner for planner in self.planners if int(planner.idx[2:]) == country][0]
+
+    @property
     def loc_map(self):
         """Return a map indicating the agent index occupying each location.
 
@@ -420,6 +453,12 @@ class World:
         agent_order = np.random.permutation(self.n_agents)
         agents = self.agents
         return [agents[i] for i in agent_order]
+
+    def get_nation_by_loc(self, loc):
+        """Gets nation based on column value and nations upper/lower bounds"""
+        for idx, vals in self.states.items():
+            if vals["lower_bound"] <= loc <= vals["upper_bound"]:
+                return idx
 
     def is_valid(self, r, c):
         """Return True if the coordinates [r, c] are within the game boundaries."""

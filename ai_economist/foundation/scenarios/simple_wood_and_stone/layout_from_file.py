@@ -639,6 +639,7 @@ class LayoutFromFile(BaseEnvironment):
                 for resource, quantity in agent.endogenous.items():
                     metrics["endogenous/{}/{}".format(agent.idx, resource)] = quantity
 
+
             metrics["util/{}".format(agent.idx)] = self.curr_optimization_metric[
                 agent.idx
             ]
@@ -798,3 +799,538 @@ class SplitLayout(LayoutFromFile):
         self.curr_optimization_metric = deepcopy(curr_optimization_metric)
         self.init_optimization_metric = deepcopy(curr_optimization_metric)
         self.prev_optimization_metric = deepcopy(curr_optimization_metric)
+
+
+@scenario_registry.add
+class layoutCitizen(LayoutFromFile):
+    """
+    World containing stone and wood with stochastic regeneration. Refers to a fixed
+    layout file (see ./map_txt/ for examples) to determine the spatial arrangement of
+    stone, wood, and water tiles.
+
+    Args:
+        planner_gets_spatial_obs (bool): Whether the planner agent receives spatial
+            observations from the world.
+        full_observability (bool): Whether the mobile agents' spatial observation
+            includes the full world view or is instead an egocentric view.
+        mobile_agent_observation_range (int): If not using full_observability,
+            the spatial range (on each side of the agent) that is visible in the
+            spatial observations.
+        env_layout_file (str): Name of the layout file in ./map_txt/ to use.
+            Note: The world dimensions of that layout must match the world dimensions
+            argument used to construct the environment.
+        resource_regen_prob (float): Probability that an empty source tile will
+            regenerate a new resource unit.
+        fixed_four_skill_and_loc (bool): Whether to use a fixed set of build skills and
+            starting locations, with agents grouped into starting locations based on
+            which skill quartile they are in. False, by default.
+            True, for experiments in https://arxiv.org/abs/2004.13332.
+            Note: Requires that the environment uses the "Build" component with
+            skill_dist="pareto".
+        starting_agent_coin (int, float): Amount of coin agents have at t=0. Defaults
+            to zero coin.
+        isoelastic_eta (float): Parameter controlling the shape of agent utility
+            wrt coin endowment.
+        energy_cost (float): Coefficient for converting labor to negative utility.
+        energy_warmup_constant (float): Decay constant that controls the rate at which
+            the effective energy cost is annealed from 0 to energy_cost. Set to 0
+            (default) to disable annealing, meaning that the effective energy cost is
+            always energy_cost. The units of the decay constant depend on the choice of
+            energy_warmup_method.
+        energy_warmup_method (str): How to schedule energy annealing (warmup). If
+            "decay" (default), use the number of completed episodes. If "auto",
+            use the number of timesteps where the average agent reward was positive.
+        planner_reward_type (str): The type of reward used for the planner. Options
+            are "coin_eq_times_productivity" (default),
+            "inv_income_weighted_coin_endowment", and "inv_income_weighted_utility".
+        mixing_weight_gini_vs_coin (float): Degree to which equality is ignored w/
+            "coin_eq_times_productivity". Default is 0, which weights equality and
+            productivity equally. If set to 1, only productivity is rewarded.
+    """
+
+    name = "layout_from_file/simple_wood_and_stone_citizen"
+    agent_subclasses = ["Citizen", "MultiPlanner"]
+    required_entities = ["Wood", "Stone", "Water"]
+
+    def __init__(
+        self,
+        *base_env_args,
+        planner_gets_spatial_info=True,
+        full_observability=False,
+        mobile_agent_observation_range=5,
+        env_layout_file="quadrant_25x25_20each_30clump.txt",
+        resource_regen_prob=0.01,
+        fixed_four_skill_and_loc=False,
+        starting_agent_coin=0,
+        isoelastic_eta=0.23,
+        energy_cost=0.21,
+        energy_warmup_constant=0,
+        energy_warmup_method="decay",
+        planner_reward_type="coin_eq_times_productivity",
+        mixing_weight_gini_vs_coin=0.0,
+        **base_env_kwargs,
+    ):
+        super().__init__(*base_env_args, **base_env_kwargs)
+        for planner in self.world.planners:
+            planner.register_inventory(self.resources)
+            planner.register_components(self._components)
+    
+    @property
+    def all_agents(self):
+        """List of all agents and planners"""
+        return self.world.agents + self.world.planners
+
+    def generate_observations(self):
+        """
+        Generate observations associated with this scenario.
+
+        A scenario does not need to produce observations and can provide observations
+        for only some agent types; however, for a given agent type, it should either
+        always or never yield an observation. If it does yield an observation,
+        that observation should always have the same structure/sizes!
+
+        Returns:
+            obs (dict): A dictionary of {agent.idx: agent_obs_dict}. In words,
+                return a dictionary with an entry for each agent (which can including
+                the planner) for which this scenario provides an observation. For each
+                entry, the key specifies the index of the agent and the value contains
+                its associated observation dictionary.
+
+        Here, non-planner agents receive spatial observations (depending on the env
+        config) as well as the contents of their inventory and endogenous quantities.
+        The planner also receives spatial observations (again, depending on the env
+        config) as well as the inventory of each of the mobile agents.
+        """
+        obs = {}
+        curr_map = self.world.maps.state
+
+        owner_map = self.world.maps.owner_state
+        loc_map = self.world.loc_map
+        agent_idx_maps = np.concatenate([owner_map, loc_map[None, :, :]], axis=0)
+        agent_idx_maps += 2
+        agent_idx_maps[agent_idx_maps == 1] = 0
+
+        agent_locs = {
+            str(agent.idx): {
+                "loc-row": agent.loc[0] / self.world_size[0],
+                "loc-col": agent.loc[1] / self.world_size[1],
+            }
+            for agent in self.world.agents
+        }
+        agent_invs = {
+            str(agent.idx): {
+                "inventory-" + k: v * self.inv_scale for k, v in agent.inventory.items()
+            }
+            for agent in self.world.agents
+        }
+        for planner in self.world.planners:
+            obs[planner.idx]={
+                "inventory-" + k: v * self.inv_scale
+            for k, v in planner.inventory.items()
+        }
+        
+        # obs[self.world.planner.idx] = {
+        #     "inventory-" + k: v * self.inv_scale
+        #     for k, v in self.world.planner.inventory.items()
+        # }
+        if self._planner_gets_spatial_info:
+            for planner in self.world.planners:
+                obs[planner.idx].update(
+                    dict(map=curr_map, idx_map=agent_idx_maps)
+                )
+
+        # Mobile agents see the full map. Convey location info via one-hot map channels.
+        if self._full_observability:
+            for agent in self.world.agents:
+                my_map = np.array(agent_idx_maps)
+                my_map[my_map == int(agent.idx) + 2] = 1
+                sidx = str(agent.idx)
+                obs[sidx] = {"map": curr_map, "idx_map": my_map}
+                obs[sidx].update(agent_invs[sidx])
+
+        # Mobile agents only see within a window around their position
+        else:
+            w = (
+                self._mobile_agent_observation_range
+            )  # View halfwidth (only applicable without full observability)
+
+            padded_map = np.pad(
+                curr_map,
+                [(0, 1), (w, w), (w, w)],
+                mode="constant",
+                constant_values=[(0, 1), (0, 0), (0, 0)],
+            )
+
+            padded_idx = np.pad(
+                agent_idx_maps,
+                [(0, 0), (w, w), (w, w)],
+                mode="constant",
+                constant_values=[(0, 0), (0, 0), (0, 0)],
+            )
+
+            for agent in self.world.agents:
+                r, c = [c + w for c in agent.loc]
+                visible_map = padded_map[
+                    :, (r - w) : (r + w + 1), (c - w) : (c + w + 1)
+                ]
+                visible_idx = np.array(
+                    padded_idx[:, (r - w) : (r + w + 1), (c - w) : (c + w + 1)]
+                )
+
+                visible_idx[visible_idx == int(agent.idx) + 2] = 1
+
+                sidx = str(agent.idx)
+
+                obs[sidx] = {"map": visible_map, "idx_map": visible_idx}
+                obs[sidx].update(agent_locs[sidx])
+                obs[sidx].update(agent_invs[sidx])
+
+                # Agent-wise planner info (gets crunched into the planner obs in the
+                # base scenario code)
+                for planner in self.world.planners:
+                    obs[planner.idx+'_a_'+sidx] = agent_invs[sidx]
+
+                for planner in self.world.planners:
+                    obs[planner.idx+'_a_'+sidx].update(agent_locs[sidx])
+                
+
+        return obs
+
+    def reset(self, seed_state=None, force_dense_logging=False):
+        """
+        Reset the state of the environment to initialize a new episode.
+
+        Arguments:
+            seed_state (tuple or list): Optional state that the numpy RNG should be set
+                to prior to the reset cycle must be length 5, following the format
+                expected by np.random.set_state()
+            force_dense_logging (bool): Optional whether to force dense logging to take
+                place this episode; default behavior is to do dense logging every
+                create_dense_log_every episodes
+
+        Returns:
+            obs (dict): A dictionary of {"agent_idx": agent_obs} with an entry for
+                each agent receiving observations. The "agent_idx" key identifies the
+                agent receiving the observations in the associated agent_obs value,
+                which itself is a dictionary. The "agent_idx" key matches the
+                agent.idx property for the given agent.
+        """
+        if seed_state is not None:
+            assert isinstance(seed_state, (tuple, list))
+            assert len(seed_state) == 5
+            seed_state = (
+                str(seed_state[0]),
+                np.array(seed_state[1], dtype=np.uint32),
+                int(seed_state[2]),
+                int(seed_state[3]),
+                float(seed_state[4]),
+            )
+            np.random.set_state(seed_state)
+
+        if force_dense_logging:
+            self._dense_log_this_episode = True
+        elif self._create_dense_log_every is None:
+            self._dense_log_this_episode = False
+        else:
+            self._dense_log_this_episode = (
+                self._completions % self._create_dense_log_every
+            ) == 0
+
+        # For dense logging
+        self._dense_log = {"world": [], "states": [], "actions": [], "rewards": []}
+
+        # For episode replay
+        self._replay_log = {"reset": dict(seed_state=np.random.get_state()), "step": []}
+
+        # Reset the timestep counter
+        self.world.timestep = 0
+
+        # Perform the scenario reset,
+        # which includes resetting the world and agent states
+        self.reset_starting_layout()
+        self.reset_agent_states()
+
+        # Perform the component resets for each registered component
+        for component in self._components:
+            component.reset()
+
+        # Take any customized reset actions
+        self.additional_reset_steps()
+
+        # By default, agents take the NO-OP action for each action space.
+        # Reset actions to that default.
+        for agent in self.all_agents:
+            agent.reset_actions()
+
+        # Produce observations
+        obs = self._generate_observations(
+            flatten_observations=self._flatten_observations,
+            flatten_masks=self._flatten_masks,
+        )
+
+        if self.collate_agent_step_and_reset_data:
+            obs = self.collate_agent_obs(obs)
+
+        return obs
+
+
+    def _generate_observations(self, flatten_observations=False, flatten_masks=False):
+        
+        def recursive_listify(d):
+            assert isinstance(d, dict)
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    d[k] = recursive_listify(v)
+                elif isinstance(v, (int, float)):
+                    d[k] = v
+                elif isinstance(v, (list, tuple, set)):
+                    d[k] = list(v)
+                elif isinstance(v, (np.ndarray, np.integer, np.floating)):
+                    d[k] = v.tolist()
+                else:
+                    raise NotImplementedError(
+                        "Not clear how to handle {} with type {}".format(k, type(v))
+                    )
+                if isinstance(d[k], list) and len(d[k]) == 1:
+                    d[k] = d[k][0]
+            return d
+
+        # Initialize empty observations
+        if self.collate_agent_step_and_reset_data:
+            obs = {"a": {}, "p": {}}
+        else:
+            obs = {str(agent.idx): {} for agent in self.all_agents}
+        agent_wise_planner_obs = {}
+        for planner in self.world.planners:
+            for agent in self.world.agents:
+                agent_wise_planner_obs[planner.idx+'_a_'+str(agent.idx)] = {}
+
+        # Get/process observations generated by the scenario
+        world_obs = {str(k): v for k, v in self.generate_observations().items()}
+        time_scale = self.episode_length if self._allow_observation_scaling else 1.0
+        for idx, o in world_obs.items():
+            if idx in obs:
+                obs[idx].update({"world-" + k: v for k, v in o.items()})
+                if self.collate_agent_step_and_reset_data and idx == "a":
+                    obs[idx]["time"] = np.array(
+                        [
+                            self.world.timestep / time_scale
+                            for _ in range(self.world.n_agents)
+                        ]
+                    )
+                else:
+                    obs[idx]["time"] = [self.world.timestep / time_scale]
+            elif idx in agent_wise_planner_obs:
+                agent_wise_planner_obs[idx].update(
+                    {"world-" + k: v for k, v in o.items()}
+                )
+            else:
+                
+                raise KeyError
+
+
+        # Get/process observations generated by the components
+        for component in self._components:
+            for idx, o in component.obs().items():
+                if idx in obs:
+                    obs[idx].update({component.name + "-" + k: v for k, v in o.items()})
+                elif idx in agent_wise_planner_obs:
+                    agent_wise_planner_obs[idx].update(
+                        {component.name + "-" + k: v for k, v in o.items()}
+                    )
+                else:
+                    raise KeyError
+
+        # Process the observations
+        if flatten_observations:
+            for o_dict in [obs, agent_wise_planner_obs]:
+                for aidx, aobs in o_dict.items():
+                    if not aobs:
+                        continue
+                    if aidx not in self._packagers:
+                        self._packagers[aidx] = self._build_packager(
+                            aobs, put_in_both=["time"]
+                        )
+                    try:
+                        o_dict[aidx] = self._package(aobs, *self._packagers[aidx])
+                    except ValueError:
+                        print("Error when packaging obs.")
+                        print("Agent index: {}\nRaw obs: {}\n".format(aidx, aobs))
+                        raise
+
+        for k, v in agent_wise_planner_obs.items():
+            if len(v) > 0:
+                obs['_'.join(k.split('_')[:2])][k] = (
+                    v["flat"] if flatten_observations else v
+                )
+
+        # Get each agent's action masks and incorporate them into the observations
+        for aidx, amask in self._generate_masks(flatten_masks=flatten_masks).items():
+            obs[aidx]["action_mask"] = amask
+
+        return obs
+
+    
+
+    def _generate_masks(self, flatten_masks=True):
+        if self.collate_agent_step_and_reset_data:
+            masks = {"a": {}, "p": {}}
+        else:
+            masks = {agent.idx: {} for agent in self.all_agents}
+        for component in self._components:
+            # Use the component's generate_masks method to get action masks
+            component_masks = component.generate_masks(completions=self._completions)
+
+            for idx, mask in component_masks.items():
+                if isinstance(mask, dict):
+                    for sub_action, sub_mask in mask.items():
+                        masks[idx][
+                            "{}.{}".format(component.name, sub_action)
+                        ] = sub_mask
+                else:
+                    masks[idx][component.name] = mask
+        if flatten_masks:
+            if self.collate_agent_step_and_reset_data:
+                flattened_masks = {}
+                for agent_id in masks.keys():
+                    if agent_id == "a":
+                        multi_action_mode = self.multi_action_mode_agents
+                        no_op_mask = np.ones((1, self.n_agents))
+                    elif agent_id == "p":
+                        multi_action_mode = self.multi_action_mode_planner
+                        no_op_mask = [1]
+                    mask_dict = masks[agent_id]
+                    list_of_masks = []
+                    if not multi_action_mode:
+                        list_of_masks.append(no_op_mask)
+                    for m in mask_dict.keys():
+                        if multi_action_mode:
+                            list_of_masks.append(no_op_mask)
+                        list_of_masks.append(mask_dict[m])
+                    flattened_masks[agent_id] = np.concatenate(
+                        list_of_masks, axis=0
+                    ).astype(np.float32)
+                return flattened_masks
+
+            return {
+                str(agent.idx): agent.flatten_masks(masks[agent.idx])
+                for agent in self.all_agents
+            }
+        return {
+            str(agent_idx): {
+                k: np.array(v, dtype=np.uint8).tolist()
+                for k, v in masks[agent_idx].items()
+            }
+            for agent_idx in list(masks.keys())
+        }
+    
+    def get_current_optimization_metrics(self):
+        """
+        Compute optimization metrics based on the current state. Used to compute reward.
+
+        Returns:
+            curr_optimization_metric (dict): A dictionary of {agent.idx: metric}
+                with an entry for each agent (including the planner) in the env.
+        """
+        curr_optimization_metric = {}
+        # (for agents)
+        for agent in self.world.agents:
+            curr_optimization_metric[agent.idx] = rewards.isoelastic_coin_minus_labor(
+                coin_endowment=agent.total_endowment("Coin"),
+                total_labor=agent.state["endogenous"]["Labor"],
+                isoelastic_eta=self.isoelastic_eta,
+                labor_coefficient=self.energy_weight * self.energy_cost,
+            )
+
+        for planner in self.world.planners:
+            # (for the planner)
+            if self.planner_reward_type == "coin_eq_times_productivity":
+                curr_optimization_metric[
+                    planner.idx
+                ] = rewards.coin_eq_times_productivity(
+                    coin_endowments=np.array(
+                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                    ),
+                    equality_weight=1 - self.mixing_weight_gini_vs_coin,
+                )
+            elif self.planner_reward_type == "inv_income_weighted_coin_endowments":
+                curr_optimization_metric[
+                    planner.idx
+                ] = rewards.inv_income_weighted_coin_endowments(
+                    coin_endowments=np.array(
+                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                    )
+                )
+            elif self.planner_reward_type == "inv_income_weighted_utility":
+                curr_optimization_metric[
+                    planner.idx
+                ] = rewards.inv_income_weighted_utility(
+                    coin_endowments=np.array(
+                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                    ),
+                    utilities=np.array(
+                        [curr_optimization_metric[agent.idx] for agent in self.world.agents]
+                    ),
+                )
+            else:
+                print("No valid planner reward selected!")
+                raise NotImplementedError
+        return curr_optimization_metric
+
+    def scenario_metrics(self):
+        """
+        Allows the scenario to generate metrics (collected along with component metrics
+        in the 'metrics' property).
+
+        To have the scenario add metrics, this function needs to return a dictionary of
+        {metric_key: value} where 'value' is a scalar (no nesting or lists!)
+
+        Here, summarize social metrics, endowments, utilities, and labor cost annealing.
+        """
+        metrics = dict()
+
+        coin_endowments = np.array(
+            [agent.total_endowment("Coin") for agent in self.world.agents]
+        )
+        metrics["social/productivity"] = social_metrics.get_productivity(
+            coin_endowments
+        )
+        metrics["social/equality"] = social_metrics.get_equality(coin_endowments)
+
+        utilities = np.array(
+            [self.curr_optimization_metric[agent.idx] for agent in self.world.agents]
+        )
+        metrics[
+            "social_welfare/coin_eq_times_productivity"
+        ] = rewards.coin_eq_times_productivity(
+            coin_endowments=coin_endowments, equality_weight=1.0
+        )
+        metrics[
+            "social_welfare/inv_income_weighted_coin_endow"
+        ] = rewards.inv_income_weighted_coin_endowments(coin_endowments=coin_endowments)
+        metrics[
+            "social_welfare/inv_income_weighted_utility"
+        ] = rewards.inv_income_weighted_utility(
+            coin_endowments=coin_endowments, utilities=utilities
+        )
+
+        for agent in self.all_agents:
+            for resource, quantity in agent.inventory.items():
+                metrics[
+                    "endow/{}/{}".format(agent.idx, resource)
+                ] = agent.total_endowment(resource)
+
+            if agent.endogenous is not None:
+                for resource, quantity in agent.endogenous.items():
+                    metrics["endogenous/{}/{}".format(agent.idx, resource)] = quantity
+
+
+            metrics["util/{}".format(agent.idx)] = self.curr_optimization_metric[
+                agent.idx
+            ]
+
+        # Labor weight
+        metrics["labor/weighted_cost"] = self.energy_cost * self.energy_weight
+        metrics["labor/warmup_integrator"] = int(self._auto_warmup_integrator)
+
+        return metrics
