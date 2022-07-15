@@ -172,7 +172,6 @@ class BaseAgent:
 
         verbose = False
         if verbose:
-            print(self.name, self.idx, "constructed action map:")
             for k, v in self.single_action_map.items():
                 print("single action map:", k, v)
             for k, v in self.action.items():
@@ -371,6 +370,7 @@ class BaseAgent:
         Return the action(s) taken for component_name component, or None if the
         agent does not use that component.
         """
+        
         if sub_action_name is not None:
             return self.action.get(component_name + "." + sub_action_name, None)
         matching_names = [

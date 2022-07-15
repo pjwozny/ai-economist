@@ -383,7 +383,7 @@ class World:
         #international tax config
         self.international = True
         if self.international:
-            self.number_of_states = 2
+            self.number_of_states = 6
             state_width = int(self.world_size[1]/self.number_of_states)
             self.states = {
                 0:{
@@ -432,6 +432,9 @@ class World:
     def planners(self):
         """Return a list of planners"""
         return self._planners
+
+    def get_planner_by_country(self, country):
+        return [planner for planner in self.planners if int(planner.idx[2:]) == country][0]
 
     @property
     def loc_map(self):

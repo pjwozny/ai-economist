@@ -639,6 +639,7 @@ class LayoutFromFile(BaseEnvironment):
                 for resource, quantity in agent.endogenous.items():
                     metrics["endogenous/{}/{}".format(agent.idx, resource)] = quantity
 
+
             metrics["util/{}".format(agent.idx)] = self.curr_optimization_metric[
                 agent.idx
             ]
@@ -870,10 +871,10 @@ class layoutCitizen(LayoutFromFile):
         **base_env_kwargs,
     ):
         super().__init__(*base_env_args, **base_env_kwargs)
-
         for planner in self.world.planners:
             planner.register_inventory(self.resources)
             planner.register_components(self._components)
+    
     @property
     def all_agents(self):
         """List of all agents and planners"""
@@ -1158,7 +1159,6 @@ class layoutCitizen(LayoutFromFile):
                         raise
 
         for k, v in agent_wise_planner_obs.items():
-            print(k,v)
             if len(v) > 0:
                 obs['_'.join(k.split('_')[:2])][k] = (
                     v["flat"] if flatten_observations else v
@@ -1169,3 +1169,168 @@ class layoutCitizen(LayoutFromFile):
             obs[aidx]["action_mask"] = amask
 
         return obs
+
+    
+
+    def _generate_masks(self, flatten_masks=True):
+        if self.collate_agent_step_and_reset_data:
+            masks = {"a": {}, "p": {}}
+        else:
+            masks = {agent.idx: {} for agent in self.all_agents}
+        for component in self._components:
+            # Use the component's generate_masks method to get action masks
+            component_masks = component.generate_masks(completions=self._completions)
+
+            for idx, mask in component_masks.items():
+                if isinstance(mask, dict):
+                    for sub_action, sub_mask in mask.items():
+                        masks[idx][
+                            "{}.{}".format(component.name, sub_action)
+                        ] = sub_mask
+                else:
+                    masks[idx][component.name] = mask
+        if flatten_masks:
+            if self.collate_agent_step_and_reset_data:
+                flattened_masks = {}
+                for agent_id in masks.keys():
+                    if agent_id == "a":
+                        multi_action_mode = self.multi_action_mode_agents
+                        no_op_mask = np.ones((1, self.n_agents))
+                    elif agent_id == "p":
+                        multi_action_mode = self.multi_action_mode_planner
+                        no_op_mask = [1]
+                    mask_dict = masks[agent_id]
+                    list_of_masks = []
+                    if not multi_action_mode:
+                        list_of_masks.append(no_op_mask)
+                    for m in mask_dict.keys():
+                        if multi_action_mode:
+                            list_of_masks.append(no_op_mask)
+                        list_of_masks.append(mask_dict[m])
+                    flattened_masks[agent_id] = np.concatenate(
+                        list_of_masks, axis=0
+                    ).astype(np.float32)
+                return flattened_masks
+
+            return {
+                str(agent.idx): agent.flatten_masks(masks[agent.idx])
+                for agent in self.all_agents
+            }
+        return {
+            str(agent_idx): {
+                k: np.array(v, dtype=np.uint8).tolist()
+                for k, v in masks[agent_idx].items()
+            }
+            for agent_idx in list(masks.keys())
+        }
+    
+    def get_current_optimization_metrics(self):
+        """
+        Compute optimization metrics based on the current state. Used to compute reward.
+
+        Returns:
+            curr_optimization_metric (dict): A dictionary of {agent.idx: metric}
+                with an entry for each agent (including the planner) in the env.
+        """
+        curr_optimization_metric = {}
+        # (for agents)
+        for agent in self.world.agents:
+            curr_optimization_metric[agent.idx] = rewards.isoelastic_coin_minus_labor(
+                coin_endowment=agent.total_endowment("Coin"),
+                total_labor=agent.state["endogenous"]["Labor"],
+                isoelastic_eta=self.isoelastic_eta,
+                labor_coefficient=self.energy_weight * self.energy_cost,
+            )
+
+        for planner in self.world.planners:
+            # (for the planner)
+            if self.planner_reward_type == "coin_eq_times_productivity":
+                curr_optimization_metric[
+                    planner.idx
+                ] = rewards.coin_eq_times_productivity(
+                    coin_endowments=np.array(
+                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                    ),
+                    equality_weight=1 - self.mixing_weight_gini_vs_coin,
+                )
+            elif self.planner_reward_type == "inv_income_weighted_coin_endowments":
+                curr_optimization_metric[
+                    planner.idx
+                ] = rewards.inv_income_weighted_coin_endowments(
+                    coin_endowments=np.array(
+                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                    )
+                )
+            elif self.planner_reward_type == "inv_income_weighted_utility":
+                curr_optimization_metric[
+                    planner.idx
+                ] = rewards.inv_income_weighted_utility(
+                    coin_endowments=np.array(
+                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                    ),
+                    utilities=np.array(
+                        [curr_optimization_metric[agent.idx] for agent in self.world.agents]
+                    ),
+                )
+            else:
+                print("No valid planner reward selected!")
+                raise NotImplementedError
+        return curr_optimization_metric
+
+    def scenario_metrics(self):
+        """
+        Allows the scenario to generate metrics (collected along with component metrics
+        in the 'metrics' property).
+
+        To have the scenario add metrics, this function needs to return a dictionary of
+        {metric_key: value} where 'value' is a scalar (no nesting or lists!)
+
+        Here, summarize social metrics, endowments, utilities, and labor cost annealing.
+        """
+        metrics = dict()
+
+        coin_endowments = np.array(
+            [agent.total_endowment("Coin") for agent in self.world.agents]
+        )
+        metrics["social/productivity"] = social_metrics.get_productivity(
+            coin_endowments
+        )
+        metrics["social/equality"] = social_metrics.get_equality(coin_endowments)
+
+        utilities = np.array(
+            [self.curr_optimization_metric[agent.idx] for agent in self.world.agents]
+        )
+        metrics[
+            "social_welfare/coin_eq_times_productivity"
+        ] = rewards.coin_eq_times_productivity(
+            coin_endowments=coin_endowments, equality_weight=1.0
+        )
+        metrics[
+            "social_welfare/inv_income_weighted_coin_endow"
+        ] = rewards.inv_income_weighted_coin_endowments(coin_endowments=coin_endowments)
+        metrics[
+            "social_welfare/inv_income_weighted_utility"
+        ] = rewards.inv_income_weighted_utility(
+            coin_endowments=coin_endowments, utilities=utilities
+        )
+
+        for agent in self.all_agents:
+            for resource, quantity in agent.inventory.items():
+                metrics[
+                    "endow/{}/{}".format(agent.idx, resource)
+                ] = agent.total_endowment(resource)
+
+            if agent.endogenous is not None:
+                for resource, quantity in agent.endogenous.items():
+                    metrics["endogenous/{}/{}".format(agent.idx, resource)] = quantity
+
+
+            metrics["util/{}".format(agent.idx)] = self.curr_optimization_metric[
+                agent.idx
+            ]
+
+        # Labor weight
+        metrics["labor/weighted_cost"] = self.energy_cost * self.energy_weight
+        metrics["labor/warmup_integrator"] = int(self._auto_warmup_integrator)
+
+        return metrics

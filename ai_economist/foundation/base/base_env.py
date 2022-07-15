@@ -711,7 +711,6 @@ class BaseEnvironment(ABC):
         for component in self._components:
             # Use the component's generate_masks method to get action masks
             component_masks = component.generate_masks(completions=self._completions)
-
             for idx, mask in component_masks.items():
                 if isinstance(mask, dict):
                     for sub_action, sub_mask in mask.items():

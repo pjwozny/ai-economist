@@ -26,7 +26,6 @@ def sample_random_action(agent, mask):
 
 def sample_random_actions(env, obs):
     """Samples random UNMASKED actions for each agent in obs."""
-    print(obs)   
     actions = {
         a_idx: sample_random_action(env.get_agent(a_idx), a_obs['action_mask'])
         for a_idx, a_obs in obs.items()
@@ -55,6 +54,7 @@ env_config = {
         ('ContinuousDoubleAuction_', {'max_num_orders': 5}),
         # (3) Movement and resource collection
         ('Gather_', {}),
+        ('PeriodicTaxBracketMultiOrchestrator', dict(bracket_spacing="us-federal", period=100))
     ],
     
     # ===== SCENARIO CLASS ARGUMENTS =====
@@ -85,7 +85,6 @@ env_config = {
 env = foundation.make_env_instance(**env_config)
 
 obs = env.reset()
-print(obs)
 
 for i in range(1000):
     actions = sample_random_actions(env, obs)
