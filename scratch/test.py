@@ -59,14 +59,14 @@ env_config = {
     
     # ===== SCENARIO CLASS ARGUMENTS =====
     # (optional) kwargs that are added by the Scenario class (i.e. not defined in BaseEnvironment)
-    'env_layout_file': 'quadrant_25x25_20each_30clump.txt',
+    'env_layout_file': 'multistatemap.txt',
     'starting_agent_coin': 10,
     'fixed_four_skill_and_loc': True,
     
     # ===== STANDARD ARGUMENTS ======
     # kwargs that are used by every Scenario class (i.e. defined in BaseEnvironment)
     'n_agents': 4,          # Number of non-planner agents (must be > 1)
-    'world_size': [25, 25], # [Height, Width] of the env world
+    'world_size': [25, 36], # [Height, Width] of the env world
     'episode_length': 1000, # Number of timesteps per episode
     
     # In multi-action-mode, the policy selects an action for each action subspace (defined in component code).

@@ -2317,7 +2317,8 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
         self.last_income = []
         self.last_effective_tax_rate = []
         self.last_marginal_rate = []
-        for agent, last_coin in zip(self.world.agents, self.last_coin):
+        agents = [agent for agent in self.world.agents] 
+        for agent, last_coin in zip(agents, self.last_coin):
             income = agent.total_endowment("Coin") - last_coin
             tax_due = self.taxes_due(income)
             effective_taxes = np.minimum(
@@ -2346,7 +2347,7 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
         self.total_collected_taxes += float(net_tax_revenue)
 
         lump_sum = net_tax_revenue / self.n_agents
-        for agent in self.world.agents:
+        for agent in agents:
             agent.state["inventory"]["Coin"] += lump_sum
             tax_dict[str(agent.idx)]["lump_sum"] = float(lump_sum)
             self.last_coin[agent.idx] = float(agent.total_endowment("Coin"))

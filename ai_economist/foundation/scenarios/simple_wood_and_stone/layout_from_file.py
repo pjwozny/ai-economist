@@ -71,7 +71,7 @@ class LayoutFromFile(BaseEnvironment):
         planner_gets_spatial_info=True,
         full_observability=False,
         mobile_agent_observation_range=5,
-        env_layout_file="quadrant_25x25_20each_30clump.txt",
+        env_layout_file="multistatemap.txt",
         resource_regen_prob=0.01,
         fixed_four_skill_and_loc=False,
         starting_agent_coin=0,
@@ -99,12 +99,12 @@ class LayoutFromFile(BaseEnvironment):
         with open(path_to_layout_file, "r") as f:
             self.env_layout_string = f.read()
             self.env_layout = self.env_layout_string.split(";")
-
         # Convert the layout to landmark maps
         landmark_lookup = {"W": "Wood", "S": "Stone", "@": "Water"}
         self._source_maps = {
             r: np.zeros(self.world_size) for r in landmark_lookup.values()
         }
+        print(self.world_size)
         for r, symbol_row in enumerate(self.env_layout):
             for c, symbol in enumerate(symbol_row):
                 landmark = landmark_lookup.get(symbol, None)
