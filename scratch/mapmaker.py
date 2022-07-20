@@ -21,6 +21,6 @@ def makeMap(num_states,  height=height, width = width):
 map = makeMap(num_states)
 print(map.replace(';','\n'))
 file_width = width*num_states
-with open(f'ai_economist/foundation/scenarios/simple_wood_and_stone/map_txt/multistatemap_{width*num_states}x{height}.txt', 'w') as f:
+with open(f'ai_economist/foundation/scenarios/simple_wood_and_stone/map_txt/multistatemap_{width*num_states+num_states}x{height}.txt', 'w') as f:
     f.write(map)
 

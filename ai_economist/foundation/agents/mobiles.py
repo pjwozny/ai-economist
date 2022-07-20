@@ -24,7 +24,6 @@ class Citizen(BaseAgent):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self.state["nation"] = 0
-    #self.name = name
 
   @property
   def nation(self):

@@ -174,11 +174,13 @@ class Gather(BaseComponent):
         world = self.world
 
         coords = np.array([agent.loc for agent in world.agents])[:, :, None]
+
         ris = coords[:, 0] + self._roff + 1
         cis = coords[:, 1] + self._coff + 1
 
         occ = np.pad(world.maps.unoccupied, ((1, 1), (1, 1)))
         acc = np.pad(world.maps.accessibility, ((0, 0), (1, 1), (1, 1)))
+
         mask_array = np.logical_and(occ[ris, cis], acc[self._aidx, ris, cis]).astype(
             np.float32
         )

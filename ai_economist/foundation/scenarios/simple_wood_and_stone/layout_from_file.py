@@ -104,7 +104,6 @@ class LayoutFromFile(BaseEnvironment):
         self._source_maps = {
             r: np.zeros(self.world_size) for r in landmark_lookup.values()
         }
-        print(self.world_size)
         for r, symbol_row in enumerate(self.env_layout):
             for c, symbol in enumerate(symbol_row):
                 landmark = landmark_lookup.get(symbol, None)

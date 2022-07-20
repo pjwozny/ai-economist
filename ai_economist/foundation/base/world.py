@@ -383,7 +383,7 @@ class World:
         #international tax config
         self.international = True
         if self.international:
-            self.number_of_states = 6
+            self.number_of_states = 3
             state_width = int(self.world_size[1]/self.number_of_states)
             self.states = {
                 0:{
@@ -404,11 +404,22 @@ class World:
             ]
 
         
-        self._agents = [
-            mobile_class(i, multi_action_mode=self.multi_action_mode_agents)
-            for i in range(self.n_agents)
-        ]
-        self._planner = planner_class('p',multi_action_mode=self.multi_action_mode_planner)
+        self._agents = []
+        self.number_of_agents_per_state = 1
+        idx = 0
+        for __ in range(self.number_of_states):
+            for _ in range(self.number_of_agents_per_state):
+                agent = mobile_class(idx, multi_action_mode=self.multi_action_mode_agents)
+                agent.state["nation"] = __
+                x = self.states[agent.state["nation"]]["lower_bound"] + int(state_width/2) + __
+                y = 2
+                agent.state["loc"] = [y,x]
+                self._agents.append(agent)
+                idx+=1
+
+            
+            
+        self._planner = planner_class('p', multi_action_mode=self.multi_action_mode_planner)
 
         self.timestep = 0
 
