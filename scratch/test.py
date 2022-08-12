@@ -1,3 +1,5 @@
+# %% 
+
 from ai_economist import foundation
 import numpy as np
 from ai_economist.foundation.base.base_agent import agent_registry
@@ -65,9 +67,9 @@ env_config = {
     
     # ===== STANDARD ARGUMENTS ======
     # kwargs that are used by every Scenario class (i.e. defined in BaseEnvironment)
-    'n_agents': 3,          # Number of non-planner agents (must be > 1)
+    'n_agents': 6,          # Number of non-planner agents (must be > 1)
     'world_size': [25, 36], # [Height, Width] of the env world
-    'episode_length': 1000, # Number of timesteps per episode
+    'episode_length': 10000, # Number of timesteps per episode
     
     # In multi-action-mode, the policy selects an action for each action subspace (defined in component code).
     # Otherwise, the policy selects only 1 action.
@@ -86,7 +88,45 @@ env = foundation.make_env_instance(**env_config)
 
 obs = env.reset()
 
-for i in range(1000):
-    actions = sample_random_actions(env, obs)
-    obs, rew, done, info = env.step(actions)
+import numpy as np
+import matplotlib.pyplot as plt
+from IPython import display
+from tutorials.utils import plotting
 
+def do_plot(env, ax, fig):
+    """Plots world state during episode sampling."""
+    plotting.plot_env_state(env, ax)
+    ax.set_aspect('equal')
+    display.display(fig)
+    display.clear_output(wait=True)
+    #plt.show()
+
+def play_random_episode(env, plot_every=100, do_dense_logging=False):
+    """Plays an episode with randomly sampled actions.
+    
+    Demonstrates gym-style API:
+        obs                  <-- env.reset(...)         # Reset
+        obs, rew, done, info <-- env.step(actions, ...) # Interaction loop
+    
+    """
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+
+    # Reset
+    obs = env.reset(force_dense_logging=do_dense_logging)
+
+    # Interaction loop (w/ plotting)
+    for t in range(env.episode_length):
+        actions = sample_random_actions(env, obs)
+        obs, rew, done, info = env.step(actions)
+
+        if ((t+1) % plot_every) == 0:
+            do_plot(env, ax, fig)
+
+    if ((t+1) % plot_every) != 0:
+        do_plot(env, ax, fig) 
+# %% 
+
+play_random_episode(env)  
+
+
+# %%

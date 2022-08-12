@@ -1072,6 +1072,101 @@ class layoutCitizen(LayoutFromFile):
 
         return obs
 
+    def reset_agent_states(self):
+        """
+        Part 2/2 of scenario reset. This method handles resetting the state of the
+        agents themselves (i.e. inventory, locations, etc.).
+
+        Here, empty inventories and place mobile agents in random, accessible
+        locations to start. Note: If using fixed_four_skill_and_loc, the starting
+        locations will be overridden in self.additional_reset_steps.
+        """
+        self.world.clear_agent_locs()
+        for agent in self.world.agents:
+            agent.state["inventory"] = {k: 0 for k in agent.inventory.keys()}
+            agent.state["escrow"] = {k: 0 for k in agent.inventory.keys()}
+            agent.state["endogenous"] = {k: 0 for k in agent.endogenous.keys()}
+            # Add starting coin
+            agent.state["inventory"]["Coin"] = float(self.starting_agent_coin)
+
+        self.world.planner.state["inventory"] = {
+            k: 0 for k in self.world.planner.inventory.keys()
+        }
+        self.world.planner.state["escrow"] = {
+            k: 0 for k in self.world.planner.escrow.keys()
+        }
+
+        # for agent in self.world.agents:
+        #     r = np.random.randint(0, self.world_size[0])
+        #     c = np.random.randint(0, self.world_size[1])
+        #     n_tries = 0
+        #     while not self.world.can_agent_occupy(r, c, agent):
+        #         r = np.random.randint(0, self.world_size[0])
+        #         c = np.random.randint(0, self.world_size[1])
+        #         n_tries += 1
+        #         if n_tries > 200:
+        #             raise TimeoutError
+        #     r, c = self.world.set_agent_loc(agent, r, c)
+
+
+        #for agent in agents
+        for agent in self.world.agents:
+            current_state = agent.state["nation"]
+            lower_bound  = self.world.states[current_state]["lower_bound"]
+            upper_bound = self.world.states[current_state]["upper_bound"]
+
+            c = np.random.randint(lower_bound+1, upper_bound-1)
+            r = np.random.randint(0, self.world_size[1]-1)
+            n_tries = 0
+            while not self.world.can_agent_occupy(r, c, agent):
+                c = np.random.randint(lower_bound+1, upper_bound-1)
+                r = np.random.randint(0, self.world_size[1]-1)
+                n_tries += 1
+                if n_tries > 200:
+                    raise TimeoutError
+            r, c = self.world.set_agent_loc(agent, r, c)
+            
+
+    def scenario_step(self):
+        """
+        Update the state of the world according to whatever rules this scenario
+        implements.
+
+        This gets called in the 'step' method (of base_env) after going through each
+        component step and before generating observations, rewards, etc.
+
+        In this class of scenarios, the scenario step handles stochastic resource
+        regeneration.
+        """
+
+        resources = ["Wood", "Stone"]
+
+        for resource in resources:
+            d = 1 + (2 * self.layout_specs[resource]["regen_halfwidth"])
+            kernel = (
+                self.layout_specs[resource]["regen_weight"] * np.ones((d, d)) / (d ** 2)
+            )
+
+            resource_map = self.world.maps.get(resource)
+            resource_source_blocks = self.world.maps.get(resource + "SourceBlock")
+            spawnable = (
+                self.world.maps.empty + resource_map + resource_source_blocks
+            ) > 0
+            spawnable *= resource_source_blocks > 0
+
+            health = np.maximum(resource_map, resource_source_blocks)
+            respawn = np.random.rand(*health.shape) < signal.convolve2d(
+                health, kernel, "same"
+            )
+            respawn *= spawnable
+
+            self.world.maps.set(
+                resource,
+                np.minimum(
+                    resource_map + respawn, self.layout_specs[resource]["max_health"]
+                ),
+            )
+
 
     def _generate_observations(self, flatten_observations=False, flatten_masks=False):
         
