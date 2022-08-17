@@ -7,7 +7,7 @@
 from copy import deepcopy
 
 import numpy as np
-
+import numpy.ma as ma
 from ai_economist.foundation.base.base_component import (
     BaseComponent,
     component_registry,
@@ -1275,27 +1275,7 @@ class PeriodicTaxBracketMultiOrchestrator(BaseComponent):
         On the first day of each tax period, update taxes. On the last day, enact them.
         """
         for worker in self.workers.values():
-            # 1. On the first day of a new tax period: Set up the taxes for this period.
-            if worker.tax_cycle_pos == 1:
-                if worker.tax_model == "model_wrapper":
-                    worker.set_new_period_rates_model()
-
-                if worker.tax_model == "saez":
-                    worker.compute_and_set_new_period_rates_from_saez_formula()
-
-                # (cache this for faster obs generation)
-                worker._curr_rates_obs = np.array(worker.curr_marginal_rates)
-
-            # 2. On the last day of the tax period: Get $-taxes AND update agent endowments.
-            if worker.tax_cycle_pos >= worker.period:
-                worker.enact_taxes()
-                worker.tax_cycle_pos = 0
-
-            else:
-                worker.taxes.append([])
-
-            # increment timestep.
-            worker.tax_cycle_pos += 1
+            worker.component_step()
 
     def generate_observations(self):
         """
@@ -1311,7 +1291,7 @@ class PeriodicTaxBracketMultiOrchestrator(BaseComponent):
         """
         obs = dict()
         
-        for country, worker in self.workers.items():
+        for _, worker in self.workers.items():
 
             obs.update(worker.generate_observations())
         return obs
@@ -1425,6 +1405,7 @@ class PeriodicTaxBracketMultiOrchestrator(BaseComponent):
 
         Reset trackers.
         """
+
         for worker in self.workers.values():
             worker.additional_reset_steps()
 
@@ -2257,40 +2238,51 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
         self.last_income = []
         self.last_effective_tax_rate = []
         self.last_marginal_rate = []
-        agents = [agent for agent in self.world.agents if agent.state['nation'] == self.country] 
-        for agent, last_coin in zip(agents, self.last_coin):
-            income = agent.total_endowment("Coin") - last_coin
-            tax_due = self.taxes_due(income)
-            effective_taxes = np.minimum(
-                agent.state["inventory"]["Coin"], tax_due
-            )  # Don't take from escrow.
-            marginal_rate = self.marginal_rate(income)
-            effective_tax_rate = float(effective_taxes / np.maximum(0.000001, income))
-            tax_dict[str(agent.idx%2)] = dict(
-                income=float(income),
-                tax_paid=float(effective_taxes),
-                marginal_rate=marginal_rate,
-                effective_rate=effective_tax_rate,
-            )
+        for agent, last_coin in zip(self.world.agents, self.last_coin):
+            if agent.state['nation'] == self.country:
 
-            # Actually collect the taxes.
-            agent.state["inventory"]["Coin"] -= effective_taxes
-            net_tax_revenue += effective_taxes
+                income = agent.total_endowment("Coin") - last_coin
+                tax_due = self.taxes_due(income)
+                effective_taxes = np.minimum(
+                    agent.state["inventory"]["Coin"], tax_due
+                )  # Don't take from escrow.
+                marginal_rate = self.marginal_rate(income)
+                effective_tax_rate = float(effective_taxes / np.maximum(0.000001, income))
+                tax_dict[str(agent.idx)] = dict(
+                    income=float(income),
+                    tax_paid=float(effective_taxes),
+                    marginal_rate=marginal_rate,
+                    effective_rate=effective_tax_rate,
+                )
 
-            self.last_income.append(float(income))
-            self.last_marginal_rate.append(float(marginal_rate))
-            self.last_effective_tax_rate.append(effective_tax_rate)
+                # Actually collect the taxes.
+                agent.state["inventory"]["Coin"] -= effective_taxes
+                net_tax_revenue += effective_taxes
 
-            self.all_effective_tax_rates.append(effective_tax_rate)
-            self._occupancy["{:03d}".format(int(self.income_bin(income)))] += 1
+                self.last_income.append(float(income))
+                self.last_marginal_rate.append(float(marginal_rate))
+                self.last_effective_tax_rate.append(effective_tax_rate)
+
+                self.all_effective_tax_rates.append(effective_tax_rate)
+                self._occupancy["{:03d}".format(int(self.income_bin(income)))] += 1
+            else:
+                #agent not currently in country do nothing
+                self.last_income.append(float(0))
+                self.last_marginal_rate.append(float(0))
+                self.last_effective_tax_rate.append(0)
 
         self.total_collected_taxes += float(net_tax_revenue)
 
-        lump_sum = net_tax_revenue / len(agents)
-        for agent in agents:
-            agent.state["inventory"]["Coin"] += lump_sum
-            tax_dict[str(agent.idx%2)]["lump_sum"] = float(lump_sum)
-            self.last_coin[agent.idx%2] = float(agent.total_endowment("Coin"))
+        lump_sum = net_tax_revenue / len([agent for agent in self.world.agents
+                                            if agent.state["nation"] == self.country])
+        for agent in self.world.agents:
+            if agent.state["nation"] == self.country:
+                agent.state["inventory"]["Coin"] += lump_sum
+                tax_dict[str(agent.idx)]["lump_sum"] = float(lump_sum)
+                self.last_coin[agent.idx] = float(agent.total_endowment("Coin"))
+            else:
+                #ignore agent not in country
+                pass
 
         self.taxes.append(tax_dict)
 
@@ -2377,7 +2369,6 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
         is_tax_day = float(self.tax_cycle_pos >= self.period)
         is_first_day = float(self.tax_cycle_pos == 1)
         tax_phase = self.tax_cycle_pos / self.period
-
         obs = dict()
 
         obs[f'p_{self.country}'] = dict(
@@ -2387,13 +2378,12 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
             last_incomes=self._last_income_obs_sorted,
             curr_rates=self._curr_rates_obs,
         )
-        agents = [agent for agent in self.world.agents if agent.state["nation"] == self.country]
-        for agent in agents:
+        for agent in self.world.agents:
             i = agent.idx
             k = str(i)
-            local_idx = i%2
+            #local_idx = i
             curr_marginal_rate = self.marginal_rate(
-                agent.total_endowment("Coin") - self.last_coin[local_idx]
+                agent.total_endowment("Coin") - self.last_coin[i]
             )
 
             obs[k] = dict(
@@ -2406,8 +2396,8 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
             )
 
             obs[f"p_{self.country}_a_{k}"] = dict(
-                last_income=self._last_income_obs[local_idx],
-                last_marginal_rate=self.last_marginal_rate[local_idx],
+                last_income=self._last_income_obs[i],
+                last_marginal_rate=self.last_marginal_rate[i],
                 curr_marginal_rate=curr_marginal_rate,
             )
 
@@ -2507,11 +2497,11 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
 
         self.tax_cycle_pos = 1
         self.last_coin = [
-            float(agent.total_endowment("Coin")) for agent in self.world.agents if agent.state["nation"] == self.country
+            float(agent.total_endowment("Coin")) for agent in self.world.agents
         ]
-        self.last_income = [0 for _ in range(self.world.number_of_agents_per_state)]
-        self.last_marginal_rate = [0 for _ in range(self.world.number_of_agents_per_state)]
-        self.last_effective_tax_rate = [0 for _ in range(self.world.number_of_agents_per_state)]
+        self.last_income = [0 for _ in range(self.world.n_agents)]
+        self.last_marginal_rate = [0 for _ in range(self.world.n_agents)]
+        self.last_effective_tax_rate = [0 for _ in range(self.world.n_agents)]
 
         self._curr_rates_obs = np.array(self.curr_marginal_rates)
         self._last_income_obs = np.array(self.last_income) / self.period
@@ -2553,9 +2543,13 @@ class PeriodicBracketTaxMultiWorker(BaseComponent):
             agent_coin_endows = np.array(
                 [agent.total_endowment("Coin") for agent in self.world.agents]
             )
-            idx_poor = np.argmin(agent_coin_endows)%2
-            idx_rich = np.argmax(agent_coin_endows)%2
+            country_specific_mask = np.array([int(agent.state["nation"] != self.country) 
+                        for agent in self.world.agents])
+            masked_agents = ma.masked_array(agent_coin_endows, country_specific_mask)
 
+            #only take into account residents
+            idx_poor = masked_agents.argmin()
+            idx_rich = masked_agents.argmax()
             tax_days = self.taxes[(self.period - 1) :: self.period]
             for i, tag in zip([idx_poor, idx_rich], ["poorest", "richest"]):
 

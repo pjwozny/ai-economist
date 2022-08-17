@@ -1,4 +1,3 @@
-# %% 
 
 from ai_economist import foundation
 import numpy as np
@@ -118,15 +117,14 @@ def play_random_episode(env, plot_every=100, do_dense_logging=False):
     for t in range(env.episode_length):
         actions = sample_random_actions(env, obs)
         obs, rew, done, info = env.step(actions)
-
         if ((t+1) % plot_every) == 0:
             do_plot(env, ax, fig)
 
     if ((t+1) % plot_every) != 0:
         do_plot(env, ax, fig) 
-# %% 
+## %% 
 
 play_random_episode(env)  
 
 
-# %%
+
