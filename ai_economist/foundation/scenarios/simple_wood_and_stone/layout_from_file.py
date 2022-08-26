@@ -1096,18 +1096,6 @@ class layoutCitizen(LayoutFromFile):
             k: 0 for k in self.world.planner.escrow.keys()
         }
 
-        # for agent in self.world.agents:
-        #     r = np.random.randint(0, self.world_size[0])
-        #     c = np.random.randint(0, self.world_size[1])
-        #     n_tries = 0
-        #     while not self.world.can_agent_occupy(r, c, agent):
-        #         r = np.random.randint(0, self.world_size[0])
-        #         c = np.random.randint(0, self.world_size[1])
-        #         n_tries += 1
-        #         if n_tries > 200:
-        #             raise TimeoutError
-        #     r, c = self.world.set_agent_loc(agent, r, c)
-
 
         #for agent in agents
         for agent in self.world.agents:
@@ -1338,12 +1326,14 @@ class layoutCitizen(LayoutFromFile):
 
         for planner in self.world.planners:
             # (for the planner)
+
+            agents=[agent for agent in self.world.agents if agent.state["nation"] == int(planner.idx[2:])]
             if self.planner_reward_type == "coin_eq_times_productivity":
                 curr_optimization_metric[
                     planner.idx
                 ] = rewards.coin_eq_times_productivity(
                     coin_endowments=np.array(
-                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                        [agent.total_endowment("Coin") for agent in agents]
                     ),
                     equality_weight=1 - self.mixing_weight_gini_vs_coin,
                 )
@@ -1352,7 +1342,7 @@ class layoutCitizen(LayoutFromFile):
                     planner.idx
                 ] = rewards.inv_income_weighted_coin_endowments(
                     coin_endowments=np.array(
-                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                        [agent.total_endowment("Coin") for agent in agents]
                     )
                 )
             elif self.planner_reward_type == "inv_income_weighted_utility":
@@ -1360,10 +1350,10 @@ class layoutCitizen(LayoutFromFile):
                     planner.idx
                 ] = rewards.inv_income_weighted_utility(
                     coin_endowments=np.array(
-                        [agent.total_endowment("Coin") for agent in self.world.agents]
+                        [agent.total_endowment("Coin") for agent in agents]
                     ),
                     utilities=np.array(
-                        [curr_optimization_metric[agent.idx] for agent in self.world.agents]
+                        [curr_optimization_metric[agent.idx] for agent in agents]
                     ),
                 )
             else:
@@ -1407,6 +1397,33 @@ class layoutCitizen(LayoutFromFile):
         ] = rewards.inv_income_weighted_utility(
             coin_endowments=coin_endowments, utilities=utilities
         )
+        
+        for planner in self.world.planners:
+            planner_coins = np.array(
+                [agent.total_endowment("Coin") for agent in self.world.agents  if agent.state["nation"] == int(planner.idx[2:])]
+            )
+            planner_utilities = np.array(
+            [self.curr_optimization_metric[agent.idx] for agent in self.world.agents if agent.state["nation"] == int(planner.idx[2:])]
+            )
+            metrics[f"social/multi/{planner.idx}/productivity"] = social_metrics.get_productivity(
+            planner_coins
+            )
+            metrics[f"social/multi/{planner.idx}/equality"] = social_metrics.get_equality(planner_coins)
+
+
+            metrics[
+                f"social_welfare/multi/{planner.idx}/coin_eq_times_productivity"
+            ] = rewards.coin_eq_times_productivity(
+                coin_endowments=planner_coins, equality_weight=1.0
+            )
+            metrics[
+                f"social_welfare/multi/{planner.idx}/inv_income_weighted_coin_endow"
+            ] = rewards.inv_income_weighted_coin_endowments(coin_endowments=planner_coins)
+            metrics[
+                f"social_welfare/multi/{planner.idx}/inv_income_weighted_utility"
+            ] = rewards.inv_income_weighted_utility(
+                coin_endowments=planner_coins, utilities=planner_utilities
+            )
 
         for agent in self.all_agents:
             for resource, quantity in agent.inventory.items():

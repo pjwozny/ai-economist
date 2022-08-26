@@ -799,6 +799,7 @@ class BaseEnvironment(ABC):
         # Back-fill the log with each component's dense log to complete the aggregate
         # dense log
         for component in self._components:
+            print(component)
             component_log = component.get_dense_log()
             if component_log is None:
                 continue

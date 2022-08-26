@@ -1,3 +1,4 @@
+# %%
 
 from ai_economist import foundation
 import numpy as np
@@ -66,9 +67,9 @@ env_config = {
     
     # ===== STANDARD ARGUMENTS ======
     # kwargs that are used by every Scenario class (i.e. defined in BaseEnvironment)
-    'n_agents': 6,          # Number of non-planner agents (must be > 1)
+    'n_agents': 12,          # Number of non-planner agents (must be > 1)
     'world_size': [25, 36], # [Height, Width] of the env world
-    'episode_length': 10000, # Number of timesteps per episode
+    'episode_length': 2000, # Number of timesteps per episode
     
     # In multi-action-mode, the policy selects an action for each action subspace (defined in component code).
     # Otherwise, the policy selects only 1 action.
@@ -85,8 +86,6 @@ env_config = {
 
 env = foundation.make_env_instance(**env_config)
 
-obs = env.reset()
-
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython import display
@@ -98,7 +97,6 @@ def do_plot(env, ax, fig):
     ax.set_aspect('equal')
     display.display(fig)
     display.clear_output(wait=True)
-    #plt.show()
 
 def play_random_episode(env, plot_every=100, do_dense_logging=False):
     """Plays an episode with randomly sampled actions.
@@ -117,14 +115,38 @@ def play_random_episode(env, plot_every=100, do_dense_logging=False):
     for t in range(env.episode_length):
         actions = sample_random_actions(env, obs)
         obs, rew, done, info = env.step(actions)
+
         if ((t+1) % plot_every) == 0:
             do_plot(env, ax, fig)
 
     if ((t+1) % plot_every) != 0:
         do_plot(env, ax, fig) 
-## %% 
-
-play_random_episode(env)  
 
 
+# %%
+play_random_episode(env, do_dense_logging=True)  
 
+
+
+
+
+
+dense_log = env.previous_episode_dense_log
+
+
+
+# %%
+# fig = plotting.vis_world_range(dense_log, t0=0, tN=1000, N=5)
+# plt.show()
+
+
+# %%
+
+(fig0, fig1, fig2), incomes, endows, c_trades, all_builds = plotting.breakdown(dense_log)
+
+# %%
+from tutorials.utils.plotting import * 
+incomes = plotting.get_tax_income(dense_log)
+plot_tax_incomes(incomes)
+# %%
+print(env.metrics.keys())

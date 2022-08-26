@@ -563,7 +563,6 @@ class PeriodicBracketTax(BaseComponent):
         """
         zs = []
         taus = []
-
         for z_t, tau_t in observed_incomes_and_marginal_rates:
             # If z_t is <=0 or tau_t is >=1, the operations below will give us nans
             if z_t > 0 and tau_t < 1:
@@ -1436,7 +1435,10 @@ class PeriodicTaxBracketMultiOrchestrator(BaseComponent):
         """
         if self.disable_taxes:
             return None
-        return self.taxes
+        taxes = []
+        for worker in self.workers.values():
+            taxes.append(worker.get_dense_log())
+        return taxes
 
 
 class PeriodicBracketTaxMultiWorker(BaseComponent):

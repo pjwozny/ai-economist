@@ -28,7 +28,6 @@ def get_gini(endowments):
         results.
     """
     n_agents = len(endowments)
-
     if n_agents < 30:  # Slower. Accurate for all n.
         diff_ij = np.abs(
             endowments.reshape((n_agents, 1)) - endowments.reshape((1, n_agents))

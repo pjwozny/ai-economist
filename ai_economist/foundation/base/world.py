@@ -405,7 +405,7 @@ class World:
 
         
         self._agents = []
-        self.number_of_agents_per_state = 2
+        self.number_of_agents_per_state = 4
         idx = 0
         for __ in range(self.number_of_states):
             for _ in range(self.number_of_agents_per_state):

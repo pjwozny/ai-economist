@@ -101,9 +101,10 @@ def plot_env_state(env, ax=None, remap_key=None):
 def plot_log_state(dense_log, t, ax=None, remap_key=None):
     maps = dense_log["world"][t]
     states = dense_log["states"][t]
-
-    n_agents = len(states) - 1
+    n_planners = sum([1 for i in states.keys() if 'p' in i])
+    n_agents = len(states) - n_planners
     locs = []
+
     for i in range(n_agents):
         r, c = states[str(i)]["loc"]
         locs.append([r, c])
@@ -270,8 +271,8 @@ def report(c_trades, all_builds, n_agents, a_indices=None):
 
 def breakdown(log, remap_key=None):
     fig0 = vis_world_range(log, remap_key=remap_key)
-
-    n = len(list(log["states"][0].keys())) - 1
+    n_planners = sum([1 for i in log['states'][0].keys() if 'p' in i])
+    n = len(list(log["states"][0].keys())) - n_planners
     trading_active = "Trade" in log
 
     if remap_key is None:
@@ -282,7 +283,7 @@ def breakdown(log, remap_key=None):
         aidx = np.argsort(key_vals).tolist()
 
     all_builds = []
-    for t, builds in enumerate(log["Build"]):
+    for t, builds in enumerate(log["Build_"]):
         if isinstance(builds, dict):
             builds_ = builds["builds"]
         else:
@@ -439,6 +440,51 @@ def breakdown(log, remap_key=None):
             ax.set_facecolor([0.3, 0.3, 0.3])
 
     return (fig0, fig1, fig2), incomes, endows, c_trades, all_builds
+
+def get_tax_income(dense_log):
+    output = {}
+    for idx, record in enumerate(dense_log["PeriodicTax"]):
+        ignore = ['schedule', 'cutoffs']
+        agents = [key for key in record[-1].keys() if key not in ignore]
+        current = {key:0 for key in record[-1][agents[0]].keys()}
+        for k in list(current.keys()):
+            current[k+'_values'] = []
+            
+
+        for t in record:
+            if len(t)>0:
+                for agent in agents:
+                    for k,v in t[agent].items():
+                        if '_' not in k:
+                            current[k]+= v
+                            current[k+'_values'].append(v)
+                        else:
+                            pass
+            else:
+                pass
+        output[idx]=current
+    return output
+def plot_tax_incomes(incomes):
+    for k,v in incomes.items():
+        cumsum = np.cumsum(v["income_values"])
+        plt.plot(range(len(cumsum)), cumsum, label = k)
+    plt.legend()
+    plt.show()
+
+def plotCountryMetrics(env):
+    relevant_keys = [key for key in env.metrics.keys() if 'multi' in key]
+    #to be used later if we want all metrics
+    types = [key.split('/')[-1] for key in relevant_keys]
+    basic_metrics = ['equality', 'productivity', 'coin_eq_times_productivity']
+    fig,axes = plt.subplots(len(basic_metrics), figsize = (15,15))
+    for metric, axis in zip(basic_metrics, axes):
+        sub_keys = [key for key in relevant_keys if '/'+metric in key]
+        for sub_key in sub_keys:
+            x = sub_key.split('/')[2]
+            axis.bar(x,env.metrics[sub_key])
+        axis.set_title(metric)
+    plt.show()
+
 
 
 def plot_for_each_n(y_fun, n, ax=None):
